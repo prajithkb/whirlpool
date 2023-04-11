@@ -1,5 +1,5 @@
 use anyhow::bail;
-use protocol::{Body, Message, Payload};
+use protocol::{Body, Echo, Init, Message, Workload};
 use tokio::sync::mpsc::{Receiver, Sender};
 
 pub struct MessageHandler {
@@ -27,54 +27,77 @@ impl MessageHandler {
                 payload,
             } = body;
             match payload {
-                Payload::Echo { echo } => {
-                    self.send(Message {
-                        src: dest,
-                        dest: src,
-                        body: Body {
-                            payload: Payload::EchoOk { echo },
-                            in_reply_to: msg_id,
-                            msg_id: Some(1),
-                        },
-                    })
-                    .await?;
-                }
-                // Do nothing
-                Payload::EchoOk { .. } => eprintln!(
-                    "Received unexpected echo_ok from {}, msg_id {:?}",
-                    src, msg_id
-                ),
-                Payload::Init { node_id, node_ids } => {
-                    self.handle_init(node_id, node_ids);
-                    self.send(Message {
-                        src: dest,
-                        dest: src,
-                        body: Body {
-                            payload: Payload::InitOk,
-                            in_reply_to: msg_id,
-                            msg_id: Some(1),
-                        },
-                    })
-                    .await?;
-                }
-                Payload::InitOk => bail!(
-                    "Should not receive init_ok, but did from {}, {:?}",
-                    src,
-                    msg_id
-                ),
+                protocol::Workload::Echo(echo) => self.handle_echo(echo, src, dest, msg_id).await?,
+                protocol::Workload::Init(init) => self.handle_init(init, src, dest, msg_id).await?,
+                protocol::Workload::Broadcast(_) => todo!(),
             }
         }
         Ok(())
     }
 
-    fn handle_init(&mut self, node_id: String, other_nodes: Vec<String>) {
-        self.id = Some(node_id);
-        self.other_nodes = other_nodes;
-    }
-
     async fn send(&mut self, message: Message) -> anyhow::Result<()> {
         eprintln!("sending {:?}", message);
         self.sender.send(message).await?;
+        Ok(())
+    }
+
+    async fn handle_echo(
+        &mut self,
+        echo: Echo,
+        src: String,
+        dest: String,
+        msg_id: Option<u64>,
+    ) -> anyhow::Result<()> {
+        match echo {
+            Echo::Echo { echo } => {
+                self.send(Message {
+                    src: dest,
+                    dest: src,
+                    body: Body {
+                        payload: Workload::Echo(Echo::EchoOk { echo }),
+                        in_reply_to: msg_id,
+                        msg_id: Some(1),
+                    },
+                })
+                .await?;
+            }
+            // Do nothing
+            Echo::EchoOk { .. } => eprintln!(
+                "Received unexpected echo_ok from {}, msg_id {:?}",
+                src, msg_id
+            ),
+        };
+        Ok(())
+    }
+
+    async fn handle_init(
+        &mut self,
+        init: Init,
+        src: String,
+        dest: String,
+        msg_id: Option<u64>,
+    ) -> anyhow::Result<()> {
+        match init {
+            Init::Init { node_id, node_ids } => {
+                self.id = Some(node_id);
+                self.other_nodes = node_ids;
+                self.send(Message {
+                    src: dest,
+                    dest: src,
+                    body: Body {
+                        payload: Workload::Init(Init::InitOk),
+                        in_reply_to: msg_id,
+                        msg_id: Some(1),
+                    },
+                })
+                .await?;
+            }
+            Init::InitOk => bail!(
+                "Should not receive init_ok, but did from {}, {:?}",
+                src,
+                msg_id
+            ),
+        }
         Ok(())
     }
 }

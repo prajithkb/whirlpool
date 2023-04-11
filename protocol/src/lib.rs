@@ -14,24 +14,44 @@ pub struct Body {
     pub msg_id: Option<u64>,
     pub in_reply_to: Option<u64>,
     #[serde(flatten)]
-    pub payload: Payload,
+    pub payload: Workload,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(untagged)]
+pub enum Workload {
+    Echo(Echo),
+    Init(Init),
+    Broadcast(Broadcast)
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
-pub enum Payload {
+pub enum Echo {
     Echo {
         echo: String,
     },
     EchoOk {
         echo: String,
     },
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
+pub enum Init {
     Init {
         node_id: String,
         node_ids: Vec<String>,
     },
     InitOk,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
+pub enum Broadcast {
 }
 
 #[cfg(test)]
@@ -46,10 +66,11 @@ mod tests {
             body: crate::Body {
                 msg_id: Some(1),
                 in_reply_to: Some(2),
-                payload: crate::Payload::InitOk,
+                payload: crate::Workload::Init(crate::Init::InitOk),
             },
         })?;
         println!("{}", serialized_result);
         Ok(())
+
     }
 }

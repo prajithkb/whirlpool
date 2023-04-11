@@ -31,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Ok(())
     });
-    // Read loop
+    // Read (blocking) loop
     while let Some(line) = lines.next_line().await? {
         eprintln!("Incoming serialized message <{}>", &line);
         let message =
