@@ -29,7 +29,7 @@ impl MessageHandler {
             match payload {
                 protocol::Workload::Echo(echo) => self.handle_echo(echo, src, dest, msg_id).await?,
                 protocol::Workload::Init(init) => self.handle_init(init, src, dest, msg_id).await?,
-                protocol::Workload::Broadcast(_) => todo!(),
+                protocol::Workload::Broadcast(broadcast) => self.handle_broadcast(broadcast, dest, msg_id).await?,
             }
         }
         Ok(())
@@ -99,5 +99,9 @@ impl MessageHandler {
             ),
         }
         Ok(())
+    }
+
+    async fn handle_broadcast(&self, broadcast: protocol::Broadcast, dest: String, msg_id: Option<u64>) -> _ {
+        todo!()
     }
 }

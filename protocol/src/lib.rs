@@ -1,5 +1,7 @@
 //! Implementation of the [maelstrom](https://github.com/jepsen-io/maelstrom/blob/main/doc/protocol.md) protocol
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -52,6 +54,18 @@ pub enum Init {
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
 pub enum Broadcast {
+    Topology {
+        topology: HashMap<String, Vec<String>>,
+    },
+    TopologyOk,
+    Broadcast{
+        message: String
+    },
+    BroadcastOk,
+    Read,
+    ReadOk {
+        messages: Vec<String>
+    }   
 }
 
 #[cfg(test)]
