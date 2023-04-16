@@ -2,6 +2,8 @@ use protocol::{Body, Echo, Init, Message, Workload};
 use serde_json::Value;
 use tokio::sync::mpsc::{Receiver, Sender};
 
+const MISSING_MESSAGE_ID: u64 = 0;
+
 #[derive(Debug)]
 pub struct MessageHandler {
     receiver: Receiver<Message>,
@@ -47,20 +49,22 @@ impl MessageHandler {
         Ok(())
     }
 
-    async fn reply(
+    async fn send_message(
         &mut self,
         src: String,
         dest: String,
         payload: Workload,
         in_reply_to: Option<u64>,
+        msg_id: Option<u64>
     ) -> anyhow::Result<()> {
+        let msg_id = msg_id.or(Some(MISSING_MESSAGE_ID));
         let msg = Message {
             src,
             dest,
             body: Body {
                 payload,
                 in_reply_to,
-                msg_id: Some(1),
+                msg_id,
             },
         };
         self.send(msg).await?;
@@ -75,7 +79,7 @@ impl MessageHandler {
     ) -> anyhow::Result<()> {
         match echo {
             Echo::Echo { echo } => {
-                self.reply(dest, src, Workload::Echo(Echo::EchoOk { echo }), msg_id)
+                self.send_message(dest, src, Workload::Echo(Echo::EchoOk { echo }), msg_id, None)
                     .await?;
             }
             // Do nothing
@@ -99,7 +103,7 @@ impl MessageHandler {
             Init::Init { node_id, node_ids } => {
                 self.id = Some(node_id);
                 self.other_nodes = node_ids;
-                self.reply(dest, src, Workload::Init(Init::InitOk), msg_id)
+                self.send_message(dest, src, Workload::Init(Init::InitOk), msg_id, None)
                     .await?;
             }
             Init::InitOk => eprintln!(
@@ -130,47 +134,60 @@ impl MessageHandler {
                     .unwrap_or_default();
                 eprintln!("Neighbours set for node {:?} as {:?}", self.id, self.neighbours);
                 // reply
-                self.reply(
+                self.send_message(
                     dest,
                     src,
                     Workload::Broadcast(protocol::Broadcast::TopologyOk),
                     msg_id,
+                    None
                 )
                 .await?;
             }
             protocol::Broadcast::Broadcast { message } => {
                 eprintln!("Broadcast message {:?} to neighbours {:?}", message, self.neighbours);
-                self.messages.push(message.clone());
-                let neighbours = self.neighbours.clone();
-                // broadcast to neighbours
-                for n in neighbours {
-                    self.reply(
-                        dest.clone(),
-                        n,
-                        Workload::Broadcast(protocol::Broadcast::Broadcast {
-                            message: message.clone(),
-                        }),
-                        msg_id,
-                    )
-                    .await?;
+                // Add only of absent
+                if self.messages.contains(&message) {
+                    eprintln!("Node {:?} has the message {:?} so this is a no-op", self.id, message);
+                }  else {
+                    self.messages.push(message.clone());
+                    // Clone for temp iteration
+                    let neighbours = self.neighbours.clone();
+                    // broadcast to neighbours
+                    for n in neighbours {
+                        self.send_message(
+                            dest.clone(),
+                            n,
+                            Workload::Broadcast(protocol::Broadcast::Broadcast {
+                                message: message.clone(),
+                            }),
+                            msg_id,
+                            None
+                        )
+                        .await?;
+                    }
+                    if msg_id.is_some() {
+                        // Respond back
+                        self.send_message(
+                            dest,
+                            src,
+                            Workload::Broadcast(protocol::Broadcast::BroadcastOk),
+                            msg_id,
+                            None
+                        )
+                        .await?;
+                    }
                 }
-                self.reply(
-                    dest,
-                    src,
-                    Workload::Broadcast(protocol::Broadcast::BroadcastOk),
-                    msg_id,
-                )
-                .await?;
             }
             protocol::Broadcast::Read => {
                 eprintln!("Read messages {:?} from  node {:?}", self.messages, self.id);
-                self.reply(
+                self.send_message(
                     dest,
                     src,
                     Workload::Broadcast(protocol::Broadcast::ReadOk {
                         messages: self.messages.clone(),
                     }),
                     msg_id,
+                    None
                 )
                 .await?
             }
