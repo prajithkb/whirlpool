@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Message {
@@ -59,12 +60,12 @@ pub enum Broadcast {
     },
     TopologyOk,
     Broadcast{
-        message: String
+        message: Value
     },
     BroadcastOk,
     Read,
     ReadOk {
-        messages: Vec<String>
+        messages: Vec<Value>
     }   
 }
 
